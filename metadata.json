@@ -1,0 +1,8 @@
+{
+  "name": "Remix TokenLab",
+  "description": "客户端直连大模型 API 性能基准测试平台，实时监控 TTFT、TPOT、吞吐量、推理强度 (Reasoning Effort) 与响应质量对比报告。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
