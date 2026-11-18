@@ -100,6 +100,107 @@ async function startServer() {
     }
   });
 
+  // Optional on-demand GET /models relay when a user's browser encounters CORS on gateways like NVIDIA NIM.
+  // Never persists or logs request headers / API keys.
+  app.post('/api/proxy/models', async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as {
+        urls?: unknown;
+        headers?: unknown;
+      };
+      const urls = Array.isArray(body.urls)
+        ? body.urls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+        : [];
+      if (urls.length === 0 || urls.length > 3) {
+        res.status(400).json({ ok: false, error: '无效的探测 URL 列表' });
+        return;
+      }
+
+      const forwardHeaders: Record<string, string> = {};
+      if (body.headers && typeof body.headers === 'object' && !Array.isArray(body.headers)) {
+        for (const [k, v] of Object.entries(body.headers as Record<string, unknown>)) {
+          if (typeof v === 'string' && k.trim()) {
+            const lower = k.toLowerCase();
+            if (lower !== 'host' && lower !== 'content-length') {
+              forwardHeaders[k.trim()] = v;
+            }
+          }
+        }
+      }
+
+      let lastStatus = 502;
+      let lastStatusText = 'Bad Gateway';
+      let lastError = '未能从目标网关拉取模型列表';
+
+      for (let i = 0; i < urls.length; i += 1) {
+        const rawUrl = urls[i].trim();
+        let parsed: URL;
+        try {
+          parsed = new URL(rawUrl);
+        } catch {
+          res.status(400).json({ ok: false, error: `无效的 URL: ${rawUrl}` });
+          return;
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          res.status(400).json({ ok: false, error: '仅支持 http/https 协议' });
+          return;
+        }
+        const hostname = parsed.hostname.toLowerCase();
+        if (
+          hostname === '169.254.169.254' ||
+          hostname === 'metadata.google.internal'
+        ) {
+          res.status(403).json({ ok: false, error: '禁止访问内部元数据地址' });
+          return;
+        }
+
+        const upstream = await fetch(parsed.toString(), {
+          method: 'GET',
+          headers: forwardHeaders,
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!upstream.ok) {
+          lastStatus = upstream.status;
+          lastStatusText = upstream.statusText;
+          if (upstream.status === 404 && i < urls.length - 1) {
+            continue;
+          }
+          const errSnippet = (await upstream.text().catch(() => '')).slice(0, 220).trim();
+          lastError = `HTTP ${upstream.status} ${upstream.statusText}${errSnippet ? ` — ${errSnippet}` : ''}`;
+          break;
+        }
+
+        const payload = (await upstream.json().catch(() => null)) as unknown;
+        if (!payload) {
+          lastStatus = 502;
+          lastError = '目标网关返回了非 JSON 响应';
+          break;
+        }
+
+        res.json({
+          ok: true,
+          status: upstream.status,
+          url: parsed.toString(),
+          payload,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        ok: false,
+        status: lastStatus,
+        statusText: lastStatusText,
+        error: lastError,
+      });
+    } catch (err) {
+      res.status(502).json({
+        ok: false,
+        error: err instanceof Error ? err.message : '代理请求失败',
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

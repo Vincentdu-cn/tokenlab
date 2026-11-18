@@ -8,6 +8,7 @@ import type {
   ModelConfig,
   NavTab,
   ReasoningEffort,
+  ReasoningMappingMode,
 } from './types/benchmark';
 import {
   DEFAULT_GLOBAL_HEADERS,
@@ -282,6 +283,54 @@ export default function App() {
     setModels((prev) => [...prev, newModel]);
     setSelectedModelIds((prev) => [...prev, newModel.id]);
     return newModel;
+  };
+
+  const handleAddModelsBatch = (
+    providerId: string,
+    items: Array<{
+      modelId: string;
+      name: string;
+      reasoningMapping: ReasoningMappingMode;
+    }>
+  ): ModelConfig[] => {
+    const baseTs = Date.now();
+    const existingIds = new Set(
+      models
+        .filter((m) => m.providerId === providerId)
+        .map((m) => m.modelId.trim())
+    );
+    const created: ModelConfig[] = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      const trimmedId = item.modelId.trim();
+      if (!trimmedId || existingIds.has(trimmedId)) continue;
+      existingIds.add(trimmedId);
+      created.push({
+        id: `mod-${baseTs}-${i}-${Math.random().toString(36).slice(2, 5)}`,
+        providerId,
+        name: item.name.trim() || trimmedId,
+        modelId: trimmedId,
+        reasoningMapping: item.reasoningMapping,
+        customReasoningPath:
+          item.reasoningMapping === 'thinking_budget'
+            ? 'thinking.budget_tokens'
+            : item.reasoningMapping === 'reasoning_effort'
+              ? 'reasoning_effort'
+              : 'reasoning.effort',
+        customEffortValues: {},
+        customHeaders: [],
+        extraBodyJson: '{}',
+        enabled: true,
+      });
+    }
+    if (created.length > 0) {
+      setModels((prev) => [...prev, ...created]);
+      setSelectedModelIds((prev) => [
+        ...prev,
+        ...created.map((m) => m.id),
+      ]);
+    }
+    return created;
   };
 
   const handleUpdateModel = (id: string, patch: Partial<ModelConfig>) => {
@@ -584,6 +633,7 @@ export default function App() {
             onUpdateProvider={handleUpdateProvider}
             onDeleteProvider={handleDeleteProvider}
             onAddModel={handleAddModel}
+            onAddModelsBatch={handleAddModelsBatch}
             onUpdateModel={handleUpdateModel}
             onDuplicateModel={handleDuplicateModel}
             onDeleteModel={handleDeleteModel}

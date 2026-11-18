@@ -4,10 +4,12 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ListChecks,
   Plus,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { ModelDiscoveryModal } from './ModelDiscoveryModal';
 import type {
   ApiProvider,
   ApiProviderFormat,
@@ -32,6 +34,14 @@ interface ProvidersViewProps {
   onUpdateProvider: (id: string, patch: Partial<ApiProvider>) => void;
   onDeleteProvider: (id: string) => void;
   onAddModel: (providerId: string) => ModelConfig;
+  onAddModelsBatch: (
+    providerId: string,
+    items: Array<{
+      modelId: string;
+      name: string;
+      reasoningMapping: ReasoningMappingMode;
+    }>
+  ) => ModelConfig[];
   onUpdateModel: (id: string, patch: Partial<ModelConfig>) => void;
   onDuplicateModel: (id: string) => ModelConfig;
   onDeleteModel: (id: string) => void;
@@ -47,6 +57,7 @@ export function ProvidersView({
   onUpdateProvider,
   onDeleteProvider,
   onAddModel,
+  onAddModelsBatch,
   onUpdateModel,
   onDuplicateModel,
   onDeleteModel,
@@ -65,6 +76,7 @@ export function ProvidersView({
   );
   const [showKey, setShowKey] = useState(false);
   const [previewEffort, setPreviewEffort] = useState<ReasoningEffort>('max');
+  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
 
   const activeProvider =
     providers.find((p) => p.id === selectedProviderId) ?? providers[0] ?? null;
@@ -353,7 +365,7 @@ export function ProvidersView({
               aria-label="提供商配置"
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 space-y-5"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div>
                   <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                     提供商设置 · {activeProvider.name || '未命名'}
@@ -363,6 +375,15 @@ export function ProvidersView({
                     <span>填写 API Key 后，该提供商下的模型才会出现在测试工作台。密钥仅存本地浏览器。</span>
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDiscoveryOpen(true)}
+                  disabled={!activeProvider.baseUrl.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950/70 border border-blue-200 dark:border-blue-800/80 rounded-md transition-colors whitespace-nowrap shrink-0 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <ListChecks className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>列出模型</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -833,6 +854,25 @@ export function ProvidersView({
           )}
         </div>
       </div>
+
+      {activeProvider && (
+        <ModelDiscoveryModal
+          isOpen={isDiscoveryOpen}
+          provider={activeProvider}
+          existingModels={providerModels}
+          globalHeaders={globalHeaders}
+          onClose={() => setIsDiscoveryOpen(false)}
+          onImportModels={(items) => {
+            const added = onAddModelsBatch(activeProvider.id, items);
+            if (added[0]) {
+              setSelectedModelId(added[0].id);
+            }
+          }}
+          onApplyResolvedBaseUrl={(nextBaseUrl) => {
+            onUpdateProvider(activeProvider.id, { baseUrl: nextBaseUrl });
+          }}
+        />
+      )}
     </div>
   );
 }
